@@ -51,10 +51,19 @@ namespace SkypeBotForCICD
             _stateAccessors = accessors ?? throw new ArgumentNullException(nameof(accessors));
             _dialogs = new DialogSet(_stateAccessors.ConversationDialogState);
 
+            var waterfallSteps = new WaterfallStep[]
+            {
+                PromptStepAsync,
+                LoginStepAsync,
+                DisplayTokenAsync,
+            };
+
             // Add the OAuth prompts and related dialogs into the dialog set
             _dialogs.Add(Prompt(ConnectionName));
             _dialogs.Add(new ConfirmPrompt(ConfirmPromptName));
-            _dialogs.Add(new WaterfallDialog("authDialog", new WaterfallStep[] { PromptStepAsync, LoginStepAsync, DisplayTokenAsync }));
+
+            // _dialogs.Add(new WaterfallDialog("authDialog", new WaterfallStep[] { PromptStepAsync, LoginStepAsync, DisplayTokenAsync }));
+            _dialogs.Add(new WaterfallDialog("authDialog", waterfallSteps));
         }
 
         /// <summary>
@@ -71,6 +80,13 @@ namespace SkypeBotForCICD
         public async Task OnTurnAsync(ITurnContext turnContext, CancellationToken cancellationToken = default(CancellationToken))
         {
             var dc = await _dialogs.CreateContextAsync(turnContext, cancellationToken);
+            var results = await dc.ContinueDialogAsync(cancellationToken);
+
+            if (results.Status == DialogTurnStatus.Empty)
+            {
+                await dc.BeginDialogAsync("authDialog", null, cancellationToken);
+            }
+
             if (turnContext == null)
             {
                 throw new ArgumentNullException(nameof(turnContext));
@@ -217,7 +233,10 @@ namespace SkypeBotForCICD
             }
 
             await step.Context.SendActivityAsync("Login was not successful please try again.", cancellationToken: cancellationToken);
-            return Dialog.EndOfTurn;
+
+            // return Dialog.EndOfTurn;
+            // WaterfallStep always finishes with the end of the Waterfall or with another dialog, here it is the end.
+            return await step.EndDialogAsync(cancellationToken: cancellationToken);
         }
 
         /// <summary>
